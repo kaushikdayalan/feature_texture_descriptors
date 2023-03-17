@@ -1,0 +1,660 @@
+---
+title: "Texture / Feature Descriptors"
+subtitle: "**Prof. Markus Wenzel Image Processing**"
+author: "Ruth Joanna & Kaushik Dayalan(MSc Data Engineering)"
+format:
+  revealjs: 
+    slide-number: true
+    chalkboard: 
+      buttons: false
+    data-background-size: contain
+    preview-links: auto
+    transition: slide
+    background-transition: fade
+    font:
+    theme: white
+---
+```{python}
+import numpy as np
+import pywt
+import matplotlib.pyplot as plt
+import cv2
+from skimage.io import imread, imshow
+from skimage.transform import resize
+from skimage.feature import hog
+from skimage import exposure
+```
+
+## Texture Descriptors
+
+- Used to extract features
+- identify patterns and structures within an image
+- Applications like recognition and analysis, where they are used to classify images based on their texture
+
+#### Examples of texture detected on walls
+![](./images/texture.png){.absolute right=200 width="800" height="200"}
+
+## Types of Texture Descriptors
+
+1. Local Binary Patterns
+
+2. Gray Level Co-Occurance Matrix (GLCM)
+
+3. Gabor Filters, Wavelet Transforms
+
+## Local Binary Patterns(LBP)
+
+LBP is a texture descriptor that represents the local structure of an image by comparing the intensity of each pixel with its neighbors. It is computationally efficient and robust to changes in illumination.
+
+**step 1**: Convert image to Binary
+
+**step 2**: Select Neighbourhood size
+
+**step 3**: Compare the center pixel to neighbouring pixels
+
+**step 4**: Derive the binary matrix
+
+**step 5**: Set value of center pixel
+
+## Local Binary Patterns(LBP)
+
+![](./images/LBP.png)
+
+::: footer
+Kelvin Salton do Prado's blog
+:::
+
+## Local Binary Patterns(LBP)
+
+##### Read the images
+
+```{python}
+#| echo: true
+#| code-fold: true
+carpet_image = cv2.imread("../images/carpet.jpeg")
+blinds_image = cv2.imread("../images/blinds.jpeg")
+```
+
+##### Convert them to gray scale and plotting them
+```{python}
+#| code-fold: true
+#| echo: true
+gray_blinds_image = cv2.cvtColor(blinds_image, cv2.COLOR_BGR2GRAY)
+gray_carpet_image = cv2.cvtColor(carpet_image, cv2.COLOR_BGR2GRAY)
+
+fig = plt.figure(figsize=(8,8))
+
+ax = fig.add_subplot(1, 2, 1)
+ax.imshow(gray_blinds_image, cmap="gray")
+
+ax = fig.add_subplot(1, 2, 2)
+ax.imshow(gray_carpet_image, cmap="gray")
+plt.show()
+```
+
+## Local Binary Patterns(LBP)
+```{python}
+#| code-fold: true
+#| echo: true
+images = [gray_blinds_image, gray_carpet_image]
+LBP_images = []
+for image in images:
+    neighboor = 3
+    imgLBP = np.zeros_like(image)
+    for ih in range(0,image.shape[0] - neighboor):
+        for iw in range(0,image.shape[1] - neighboor):
+            img = image[ih:ih+neighboor,iw:iw+neighboor]
+            center = img[1,1]
+            binary_matrix = (img >= center)*1.0
+            flattened_binary = binary_matrix.T.flatten()
+            img01_vector = np.delete(flattened_binary,4)
+
+            where_img01_vector = np.where(img01_vector)[0]
+            if len(where_img01_vector) >= 1:
+                num = np.sum(2**where_img01_vector)
+            else:
+                num = 0
+            imgLBP[ih+1,iw+1] = num
+    LBP_images.append(imgLBP)
+```
+
+```{python}
+fig = plt.figure(figsize=(10,10))
+
+ax = fig.add_subplot(1, 2, 1)
+ax.imshow(LBP_images[0], cmap="gray")
+
+ax = fig.add_subplot(1, 2, 2)
+ax.imshow(LBP_images[1], cmap="gray")
+plt.show()
+```
+
+## Grey Level Co-Occurance Matrix
+
+GLCM is a texture descriptor that captures the spatial relationships between pairs of pixels with similar gray-level values. It provides information about the texture direction, coarseness, and contrast.
+
+##### Example for a Grey Level Co-Occurance Matrix
+![](./images/glcm_graph.png){.absolute right=300 width="450" height="250"}
+
+
+## Grey Level Co-Occurance Matrix
+
+:::: {.columns}
+
+::: {.column width="60%"}
+
+sum of values in C = 18
+
+![](./images/glcm.png){width="600" height="350"}
+
+
+
+:::
+
+::: {.column width="40%"}
+
+Divide each by 18
+
+![](./images/probs.png){width="450" height="250"}
+
+:::
+
+::::
+
+
+
+
+## Example and Application
+
+```{python}
+sky_image = cv2.imread("../images/sky.jpeg")
+
+gray_sky_image = cv2.cvtColor(sky_image, cv2.COLOR_BGR2GRAY)
+
+```
+
+```{python}
+#| code-fold: true
+#| echo: true
+
+pos_op = [0, 1]
+
+glcm = np.zeros_like(gray_sky_image)
+
+for i in range(gray_sky_image.shape[0]): 
+    for j in range(gray_sky_image.shape[1]): 
+        init_val = gray_sky_image[i,j]
+        try:
+            target = gray_sky_image[i+pos_op[0],j+pos_op[1]]
+        except IndexError:
+            continue
+        glcm[init_val,target]+=1
+
+glcm = glcm/np.sum(glcm)
+
+```
+
+```{python}
+
+fig = plt.figure(figsize=(20,20))
+
+ax = fig.add_subplot(1, 2, 1)
+
+ax.imshow(cv2.cvtColor(sky_image, cv2.COLOR_BGR2RGB))
+
+ax = fig.add_subplot(1, 2, 2)
+ax.imshow(glcm, cmap="gray")
+plt.show()
+```
+
+## Example and Application
+
+```{python}
+high_contrast_image = cv2.imread("../images/high_contrast.jpeg")
+
+high_contrast_gray_image  = cv2.cvtColor(high_contrast_image, cv2.COLOR_BGR2GRAY)
+```
+
+```{python}
+pos_op = [0, 1]
+
+# init glcm array
+glcm = np.zeros_like(high_contrast_gray_image)
+
+# iterate over image and complete glcm
+for i in range(high_contrast_gray_image.shape[0]): # row
+    for j in range(high_contrast_gray_image.shape[1]): # col
+        init_val = high_contrast_gray_image[i,j]
+        try:
+            target = high_contrast_gray_image[i+pos_op[0],j+pos_op[1]]
+        except IndexError:
+            continue # out of img bounds
+        glcm[init_val,target]+=1
+
+glcm = glcm/np.sum(glcm)
+```
+
+```{python}
+fig = plt.figure(figsize=(20,20))
+
+ax = fig.add_subplot(1, 2, 1)
+
+ax.imshow(cv2.cvtColor(high_contrast_image, cv2.COLOR_BGR2RGB))
+
+ax = fig.add_subplot(1, 2, 2)
+ax.imshow(np.log(glcm[:250][::,:250]+1e-6), cmap="gray")
+plt.show()
+```
+
+## Gabor Filters
+
+Gabor filters are a family of linear filters that are designed to simulate the response of simple cells in the human visual system. They are capable of capturing both the spatial and frequency characteristics of an image.
+
+![](./images/gb_formula.png)
+
+## Gabor Filters
+
+We obtain a response matrix R.
+
+![](./images/gb_form_2.png)
+
+![](./images/gb_filter.png)
+
+
+
+## Wavelet Filters
+
+Wavelets are functions that are concentrated in time and frequency around a certain point. This transformation technique is used to overcome the drawbacks of fourier method.
+
+![](./images/wavelet_pic.png)
+
+## Wavelet Filters
+```{python}
+#| code-fold: true
+#| echo: true
+face_image = cv2.imread("../images/face.png")
+
+gray_face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+# Load image
+original = gray_face_image
+
+# Wavelet transform of image, and plot approximation and details
+titles = ['Approximation', ' Horizontal detail',
+          'Vertical detail', 'Diagonal detail']
+coeffs2 = pywt.dwt2(original, 'bior1.3')
+LL, (LH, HL, HH) = coeffs2
+fig = plt.figure(figsize=(12, 3))
+for i, a in enumerate([LL, LH, HL, HH]):
+    ax = fig.add_subplot(1, 4, i + 1)
+    ax.imshow(a, interpolation="nearest", cmap=plt.cm.gray)
+    ax.set_title(titles[i], fontsize=10)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+fig.tight_layout()
+plt.show()
+```
+
+
+## HAAR Cascades Face Detection Classifier
+
+Most popular face detection algorithm.
+
+![](./images/The-Haar-wavelet-framework-a-the-Haar-scaling-function-and-wavelet-b-the-three.png)
+
+HAAR wavelet filters
+
+
+
+## HAAR Cascades Face Detecor{ .scrollable }
+
+```{python}
+#| code-fold: true
+#| echo: true
+
+# Load the pre-trained classifier
+face_cascade = cv2.CascadeClassifier('../haarcascade_frontalface_default.xml')
+
+# Load the first image
+img1 = cv2.imread('../images/man_image.jpeg')
+
+# Convert the image to grayscale
+gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+
+# Detect faces in the image
+faces1 = face_cascade.detectMultiScale(gray1, scaleFactor=1.3, minNeighbors=5)
+
+# Draw a rectangle around each face
+for (x, y, w, h) in faces1:
+    cv2.rectangle(img1, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+# Load the second image
+img2 = cv2.imread('../images/ppl.jpg')
+
+# Convert the image to grayscale
+gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+
+# Detect faces in the image
+faces2 = face_cascade.detectMultiScale(gray2, scaleFactor=1.37, minNeighbors=4)
+
+# Draw a rectangle around each face
+for (x, y, w, h) in faces2:
+    cv2.rectangle(img2, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+# Display the first image with face detections
+plt.subplot(1, 2, 1)
+plt.imshow(cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+plt.title('Image 1')
+plt.axis('off')
+
+# Display the second image with face detections
+plt.subplot(1, 2, 2)
+plt.imshow(cv2.cvtColor(img2, cv2.COLOR_BGR2RGB))
+plt.title('Image 2')
+plt.axis('off')
+
+# Show the plot
+plt.show()
+```
+
+## Scale invarient Feature Transform(SIFT)
+
+- Most used feature descriptor
+- locate local features(keypoints)
+
+### Steps in SIFT
+
+**step 1:** Constructing a scale space
+
+**step 2:** Keypoint localisation
+
+**step 3:** Orientation assignment
+
+**step 4:** Keypoint descriptors
+
+## Constructing a scale space
+
+- Need to remove noise
+
+![](./images/gs_blur.png){right=300 width="500" height="150"}
+
+
+```{python}
+taj_1_image = cv2.imread('../images/taj_mahal_1.jpeg') 
+taj_1_gray = cv2.cvtColor(taj_1_image, cv2.COLOR_BGR2GRAY)
+```
+```{python}
+#| echo: true
+#| 
+blur_image = cv2.GaussianBlur(taj_1_gray,(0,0),cv2.BORDER_DEFAULT)
+```
+```{python}
+fig = plt.figure(figsize=(10,10))
+
+ax = fig.add_subplot(1, 2, 1)
+ax.imshow(cv2.cvtColor(taj_1_gray, cv2.COLOR_BGR2RGB))
+
+ax = fig.add_subplot(1, 2, 2)
+ax.imshow(cv2.cvtColor(blur_image, cv2.COLOR_BGR2RGB))
+plt.show()
+```
+
+## Constructing a scale space{ .scrollable }
+```{python}
+#| code-fold: true
+#| echo: true
+
+scale_percent = [100,80, 60, 40] # percent of original size
+for count, scale in enumerate(scale_percent,1):
+    width = int(taj_1_gray.shape[1] * scale / 100)
+    height = int(taj_1_gray.shape[0] * scale / 100)
+    dim = (width, height)
+    fig = plt.figure(figsize=(20,10))
+    resized_im = cv2.resize(taj_1_gray, dim, interpolation = cv2.INTER_AREA)
+    blur_image = resized_im
+    for i in range(1, 5):
+        ax = fig.add_subplot(count, 5, i)
+        blur_image = cv2.GaussianBlur(blur_image,(7,7),cv2.BORDER_DEFAULT)
+        ax.imshow(blur_image, cmap="gray")
+plt.show()
+```
+
+## Constructing a scale space{ .scrollable }
+
+### Difference of Gaussian
+
+This is a method of subtracting the orginal image from gaussian blur.
+
+```{python}
+#| code-fold: true
+#| echo: true
+
+blur_image = cv2.GaussianBlur(taj_1_gray,(3,3),cv2.BORDER_DEFAULT)
+
+dif_im = taj_1_gray - blur_image
+```
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+```{python}
+
+plt.imshow(taj_1_gray, cmap="gray");
+```
+:::
+
+::: {.column width="50%"}
+
+```{python}
+
+plt.imshow(dif_im, cmap="gray");
+```
+
+:::
+
+::::
+
+## Keypoint Localization
+
+-  find the important keypoints from the image that can be used for feature matching.
+-  find the local maxima and minima for the images
+
+![](./images/key_p.png){right=300 width="500" height="350"}
+
+## Keypoint Selection
+
+Some of these keypoints may not be robust to noise.
+
+- Taylor expansion: magnitude < 0.03
+- Hessian matrix to remove keypoints for edge response
+
+Now we have our valid keypoints
+
+## Orientation Assignment
+
+:::: {.columns}
+
+::: {.column width="50%"}
+![](./images/orientation.png)
+
+![](./images/grad.png)
+:::
+
+::: {.column width="50%"}
+- Calculate the magnitude and orientation for every pixel.
+- We create a histogram of bin values for the magnitudes.
+
+:::
+
+::::
+
+## Keypoint Descriptor
+
+This is the final step for SIFT.
+
+Here we create a 16x16  neighbourhood.
+Subdivide the 16x16 into 4x4.
+
+![](./images/desc.png)
+
+## Example Generated Keypoints
+
+```{python}
+sift = cv2.xfeatures2d.SIFT_create()
+keypoints_1, descriptors_1 = sift.detectAndCompute(taj_1_gray,None)
+
+img_1 = cv2.drawKeypoints(taj_1_gray,keypoints_1, taj_1_gray)
+
+plt.imshow(img_1);
+```
+
+## Histogram of Oriented Gradients(HOG) Feature Descriptor
+
+HOG, or Histogram of Oriented Gradients, is a feature descriptor that is often used to extract features from image data. It is widely used in computer vision tasks for object detection.
+
+- Focus on structure and shape of object.
+- Can provide direction of the edges.
+- Image is broken down into smaller partitions.
+
+## Histogram of Oriented Gradients(HOG) Feature Descriptor
+
+#### Preprocess the data
+
+Must have a ratio of 1:2.
+
+Suitable size is 64x128.
+
+![](./images/puppy_resize.png){.absolute right=300 width="350" height="350"}
+
+## Histogram of Oriented Gradients(HOG) Feature Descriptor
+
+#### Calculating gradients of the pixels
+
+Just as seen before we calculate the gradient by taking corresponding neighbours from x, y axis.
+
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+![](./images/orientation.png)
+
+:::
+
+::: {.column width="50%"}
+
+![](./images/total_grad.png)
+
+![](./images/angle.png)
+
+:::
+
+::::
+
+
+## Histogram of Oriented Gradients(HOG) Feature Descriptor
+
+#### Different methods to calculating the histogram
+
+method 1: Frequency table
+
+![](./images/frequency_table.png)
+
+## HOG Feature Descriptor
+
+method 2: Frequency table with bins of size 20
+![](./images/freq_table_20.png)
+
+
+## HOG Feature Descriptor
+
+method 3: Table using gradient magnitude
+
+![](./images/gradient_table.png)
+
+
+## HOG Feature Descriptor
+
+method 4: Table using weighted gradients
+
+![](./images/weighted_gradient_table.png)
+
+## Calculate Histogram of Gradients in 8×8 cells (9×1)
+
+the features (or histogram) for the smaller patches which in turn represent the whole image. We can certainly change this value here from 8 x 8 to 16 x 16 or 32 x 32.
+
+![](./images/feature_patches.png){.absolute right=300 width="350" height="350"}
+
+## HOG Feature Descriptor
+
+#### Normalise the gradients
+
+- Split the image into 16x16 partitions.
+- Collect the gradients of each 8x8 matrices in the 16x16 partitions.
+- Obtain 36x1 vector
+
+
+
+
+:::: {.columns}
+
+::: {.column width="35%"}
+
+1x36 vector of magnitudes.
+
+![](./images/vector.png)
+:::
+
+::: {.column width="35%"}
+
+Calculate root of sum of squares of vector.
+
+![](./images/sum_square.png)
+
+
+:::
+
+::: {.column width="30%"}
+
+Normalise each magnitude
+
+![](./images/normalise_formula.png)
+
+:::
+
+::::
+
+## HOG Feature Descriptor
+
+#### Example
+```{python}
+#| code-fold: true
+#| echo: true
+
+img = imread('../images/puppy_image_Resize.jpg')
+plt.imshow(img)
+
+resized_img = resize(img, (128,64)) 
+plt.imshow(resized_img)
+print(resized_img.shape)
+
+```
+
+
+## HOG Feature Descriptor
+
+#### Example
+
+We perform HOG transforms over the given image.
+
+```{python}
+#| code-fold: true
+#| echo: true
+
+fd, hog_image = hog(resized_img, orientations=9, pixels_per_cell=(8, 8),
+                    cells_per_block=(2, 2), visualize=True, channel_axis=2)
+
+print("Number of features:", fd.shape)
+plt.imshow(hog_image, cmap="gray");
+```
